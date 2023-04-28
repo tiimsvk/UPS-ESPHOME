@@ -1,4 +1,5 @@
 # UPS-ESPHOME
+![Main photo of the weather station](20230426_081324.jpg)
 Druhý prototyp hybridného meniča pre domáce použitie do 5A odberu.
 
 - moje použitie je komplet pohon inteligentnej domácnosti (rpi/xiami gateway/ 5 kamier / modem a router / tvbox / magio box / led strip / + ďalsie veci
