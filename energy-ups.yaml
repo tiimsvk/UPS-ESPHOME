@@ -1,0 +1,1211 @@
+# ----- BUG FIXED -----
+ # controlling heatsink on solar charger / was not needed yet
+
+# ----- CIRCUIT IN HOUSE -----
+ # Cabling:
+  # Blue  marker: solar 2 not connected yet
+
+  # White marker: multimedia
+    # TVbox + xiaomi cam, 
+    # Gateway, 
+    # Magio box, 
+    # Led strip WW
+    # Led strip RGBWW
+    # Google speaker
+    # Planned = Elektricit measure + Cam middle
+
+  # Black marker: internet and cameras (
+    # 2x Xiaomi cam (back; front)
+    # T-com modem
+    # Asus router
+    # RPI4
+    # Xiaomi gateway
+
+  # minimal AWG 20 0.75mm2 0.81mm max 5A 
+  # optimal AWG 18 1.00mm2 1.02mm 
+  # best    AWG 16 1.50mm2 1.29mm
+
+  # max lenght: 6m
+
+  # Solar panel: AWG12   4.00mm2 best AWG10
+  # Battery:     AWG10   6.00mm2
+  # Out:         AWG14 2x2.50mm2
+  # UPS in min:  AWG16   1.50mm2 
+
+# DEVICE CONNECTED:
+  #MYCLOUD 1.5A normal 0.5A 12V
+
+substitutions:
+  friendly_name: Energy-UPS
+  device_name: energy-ups
+  created_by: "StudioTiiM 2022-2023"
+  device_description: "Charging control solar power to battery"
+
+#-------------------------------------------
+# DEFINE PINS AND VARIABILES
+# CIRCUIT AND MODULES - basic definitions and description of the device
+#-------------------------------------------
+ # Power Consumption:
+  # Charging: 12V 90mA
+  # Normal on battery: 12V 120mA 
+
+ # ----- MCU -----
+  # Module: ESP8266 ESP07 + prototype adapter board
+   # Circuit: minmal running  add 10kΩ pullup EN / 10kΩ pulldown GPIO15; 104 capacitor VCC-GND
+   # Modification: 
+   # Protect: add fuse marking 5 smd 0805 500mA 6V
+
+ # ----- LEDS -----
+ # STATUS LED
+  # Module: Led on board smd blue + led 5mm Green
+   # Circuit: GPIO -> 22Ω -> led -> GND
+   # Power consumption: 5mA
+  status_led_pin: GPIO02
+ # CHARGER AND ERROR LED
+  # Module: led 5mm Red
+   # Circuit: GPIO -> 22Ω -> led -> GND
+   # Power consumption: 5mA
+   # Settings: 
+    # Charging: blink slow
+    # Fullcharg: on
+    # Error/Warning blink fast
+  charging_led_pin: GPIO16
+ 
+ # ----- TEMPERATURE SENSORS -----
+  # Module: Dallas DS18B20
+   # Circuit: 4.7k resistor data pin to VCC (parasite connected)
+   # Power consumption: 50uA
+   # Measure: Battery and MCU
+  dallas_pin: GPIO03
+
+ # ----- RELAY -----
+  # Module: BESTEP JQC3F-03VDC-C
+   # Specification: Voltage: 3VDC "90mA" / 5pins / Range: 250VAC 10A, 30VDC 10A
+   # Circuit: modul whit pc817 opto + j3y NPN transistor
+   # Normal closed: power supply input when battery low.
+   # Power consumption: 12V 30mA
+  relay_pin: GPIO15 #GPIO15 PULLDOWN whit prevent startap releay (pins 12,13,14 shorts pullup on boot) start UPS whitout battery
+
+ # ----- FAN -----
+  # Module: Arctic DC12 90mA P8PWM
+   # Specification: 12V / 200 ~ 3000rpm / dimension 80x80x25mm / 4pin
+   # Power conumption: max rpm = 70mA
+  fan_tach_pin: GPIO1
+  fan_pwm_pin: GPIO14
+  fan_power_pin: GPIO13
+
+  temperature_threshold_low: "30" # At what temperature, in celcius, should the fan turn on to its minimum speed
+  temperature_threshold_high: "40" # At what temperature, in celcius, should the fan turn on to its maximum speed
+  minimum_fan_speed: "20" # What is the minimum fan speed, as a percentage
+
+ # ---- LCD -----
+  # Module: Character LCD 20x4 green yellow
+   # Specification: controller ST7066 / Voltage 5VDC
+   # Circuit: Interface: I2C pcf8574 address: 0x27 (no soldering any pin)
+   # Modification: prevent turn on backlight when is power failure: unsolder resistor 4k7 pullup at J3Y transistor led (no fix backglight still turns on)
+   # Power consumption: 5.6mA whit led 34.2mA
+
+ # ----- SOLAR PANEL -----
+  # Module: Solarfam panel 60Wp polycrystal 18V SZ-60-40M
+   # Specification: Pmax 60W / Voltage Vmp: 18.21V Voc: 21.73V / Imp: 3.3A Isc: 3.48A / dimension: 1050x35x3cm / Operating temperature: -40 ~ +85°C
+
+ # ----- CHARGING -----
+  # Module: YH1074A-CV CC Constant Current/Voltage Converter Step-Down Power Module, non isolated
+   # Specification: Input: 4 ~ 32V (limit 36V) / Output: 1.2 ~ 32V fixed / Current 0.3 ~ 10A (long 6A max 60°C) / Operating temperature: -40 ~ +85°C / Frequency: 150kHz / Effeciency: 98% 
+   # Protection: Short circuit / auto reduce current over temperature max 13A
+   # Circuit: Protect diode SR560 voltage drop 0.3-0.4V
+
+   # Modification: add set two output voltag.
+    # Circuit modification: 
+     # GPIO -> 4N35 -> 100Ω -> GND
+     # Charger unsolder trimmer cathode -> trimmer 503 -> 4N35 -> trimmer 104 -> 220kΩ -> trimmer 503 - Charger unsolder trimmer anode
+    # Add button: turn off charger current
+   # Settings: 
+    # Trimmer CV/CC: increase clockwise
+    # trimmer pin 104: 1  -  2 -  3
+    # Set CC:  5A        12k  86k
+    # -----------------------------
+    # trimmer pin 503 + 104:
+    # Set CV:  14.6v
+    # Set CV:  13.4V
+
+    # Lead acid battery charging specification:
+     # 3 stage charging:
+      # 1. stage: BULK       - Constant current SET max 5A (show battery specification) (80% capacity battery)
+      # 2. stage: ABSORBTION - Constant voltage SET max 14.4V / max 7-10h (14.5V ~ 14.9V)
+      # 3. stage: FLOAT      - 260mA 13.4V max charging (150-300mA 13.6V ~ 13.8V)(current: 1% max capacity = 26000mAh * 0.01 = 260mAh)
+
+  solar_charger_pin: GPIO12
+ # ----- BUCK-BOOST -----
+  # Module: LTC3780
+   # Specification: in: 5 - 32V / out: 1 - 30V / Current 8A short 10A / Temperature Range: –40°C ~ +85°C /
+   # Settings: Voltage out: 12.8V / Current out:
+
+ # ----- BATTERY -----
+  # Module: Sealed Lead Acid Battery 12V 26Ah AGM20
+   # Specification: Weight 6.9kg / Green Cell / typ: VRLA AGM / inner resistance : <5mΩ / Dimension: 175 x 166 x 125mm 
+
+ # ------SUPERCAP -----
+  # Model: Super capacitor BCE005R5C224FS
+   # Specification: 5.5V 0.22F 5pick paraller connection 1.1F (1min full charge / 15s discharge and off MCU)
+   # Circuit: VCC CAP -> 22Ω VCC -> 5V in MCU (current draw limitation / protection against not running mcu)
+   
+ # ----- LDO -----
+  # Module: AJ26 V3.2 (DD2712SA) - MP1584 3A, 1.5MHz, 28V Step-Down Converter 
+   # Specification: in 4.5 ~ 28 V / out 5V fixed (0.8 ~ 25 V) / current max 1.5A (2.5A max 5min. 3.5A short time.) / Temperature Range: –20°C ~ +125°C / switching frequency 900kHz (100kHz ~ 1.5MHz) / effeiciency 76 ~ 92%
+   # Protection: ceramic capacitor / internal soft start / over temperature 150°C / short circuit 
+   # Modification: unsolder KPB310 Bridge Rectifier and l7850cv / add P160 1.6A PPTC Resettable  / add out voltage protected diode low drop voltage 1N5817
+   # Power consumption: in 12V = Quiescent current 0.25mA (LM317 5.5mA / LM2596 6.37mA/8.0mA whit red led / 78M05 0.5A(short circuit current limiting 960mA) 3.14mA and L7805 3.5mA overheat whit heatsink current draw 100mA)
+  # Module: holtek HT7833
+   # Specification: Voltage in 0 ~ 8V out fixed 3.3V 2% / max voltage drop 360mV / current max 0.5A / 
+   # Protection: overtemperature / current limiting
+   # Power consumption: current standby 0.22mA (datasheet standby current 4µA)
+
+ # ----- MEASUREMENT OF ELECTRICITY -----
+  # Module: INA3221 3CH DC current sensor black board
+   # Specification: Bus Voltage max 26V / Shunt voltage max 163.8mV / Voltage operating 2.7 - 5.5V / Working temperature -40 ~ 125 °C / 
+   # Modification: Change shunt resistor R100 to R010 (resistor R010 3W smd 2512)
+    # Shunt resistor 0.01Ω max current I=V/R; I = 0.1638V / 0.01Ω = 16.38A max
+   # Circuit: Interface: I2C address: 0x40
+   # Consumption: standby 350uA
+
+  # Module: INA219 High Side DC Current
+   # Specification: Dimension 25x22mm / Voltage: Operating 3 ~ 5.5V, max in 32V / Resolution: 3.2A 12bit / Accuracy: ±1% / Operational Range: Temperature: -25 ~ +85°C
+   # Shunt resistor: 10mΩ max 320mV
+    # Math: I=V/R = shunt_voltage / shunt_resistor = 0.32V / 0.01Ω = 32A max
+    # Modification: 0.01Ω * 15A(max input power supply) = 150mV (resistor R010 3W smd 2512)
+    # https://forums.adafruit.com/download/file.php?id=84820&sid=d180edeb3286734d1316585c555f86ae
+   # Consumption: Standby 15μA / Normal 1mA
+    # Attention: remove the 0.1 ohm current sense resistor and replace it with their own to change the range (say a 0.01 ohm to measure up 32 Amps with a resolution of 8mA) 
+    # Note: that when switching inductive loads, the instantaneous voltage levels may greatly exceed steady-state levels due to inductive kickback. Chip damage can occur if you do not take precautions to protect against inductive spikes.
+   # Circuit: Interface: I2C address: 0x41 (solder A0 pins)
+ 
+ # ----- POWER SUPPLY -----
+  # Module: Switching power supply 12V 15A S-180-12
+   # Specification: in 110 ~ 230V AC / out: 12V DC 15A / 
+   # Power consumption: 30mA 230VAC = 7W
+ 
+ # ----- PROTECTION -----
+  # Short circuit: charger / stabilisator / Power supply
+  # Overload: power supply
+  # Over voltage: power supply 
+  # Fuse: 
+   # POWER SUPPLY -> 15A -> SOCKET 1 / 2 and 230 on
+   # BATTERY - > 7.5A
+   # SOCKET 2 -> 7.5A
+   # Stabilisator -> 16A on module
+   # USB + LDO -> 1812, P160 1.6A PPTC Resettable 
+   # mcu: Marking 5 smd 0805 500mA 6V
+  # Varistor: Power supply 
+  # Over temperature: charger change current
+
+ # ----- CONNECTORS -----
+  # NAME                               VOLTAGE        CURRENT
+  # OUTPUT
+  # 1x USB: Data connected whit 220Ω =  5.0V            1.5A
+  # 2x DOUBLE BANNA CONNECTOR          12.0V            5.0 ~ 10.0A
+ 
+  # INPUT
+  # 4PIN TERMINAL 15A - BATTERY        12.0V            5.0A
+  # PUSH DOWN SPEAKER - SOLAR PANEL    24.0V            5.0A
+  # JST 2.54 - DALLAS TEMPERATURE       3.3V + GND + DATA           
+ 
+#-------------------------------------------
+# PROTOCOLS
+#-------------------------------------------
+ # ----- PROTOCOLS PINS -----
+  # I2C
+  i2c_sda: GPIO04
+  i2c_scl: GPIO05
+
+ # ----- PROTOCOLS SETTINGS -----
+i2c:
+ sda: $i2c_sda
+ scl: $i2c_scl
+ frequency: 100kHz #fixed pcf8574 lcd display driver not connected to wifi
+ # https://github.com/esphome/issues/issues/2128
+
+dallas:
+  pin: "$dallas_pin"
+  update_interval: 10s
+
+#-------------------------------------------
+# ESP - MAIN SETTINGS
+#-------------------------------------------
+esphome:
+  name: energy-ups
+  project:
+    name: "studiotiim.assistant"
+    version: 2023.4.2.0.1
+
+esp8266:
+#  board: esp07
+  board: esp01_1m
+
+#-------------------------------------------
+# LOGGER
+# disable log, gpio used
+#-------------------------------------------
+logger:
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  manual_ip:
+    static_ip: 192.168.31.102
+    # Set this to the IP address of the router. Often ends with .1
+    gateway: 192.168.31.1
+    # The subnet of the network. 255.255.255.0 works for most home networks.
+    subnet: 255.255.255.0
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "$device_name Hotspot"
+    password: "passenergyups"
+
+captive_portal:
+
+#-------------------------------------------
+# WEB SERVER ACTIVATE
+#-------------------------------------------
+web_server:
+#  port: 80
+
+#-------------------------------------------
+# SCRIPTS
+#-------------------------------------------
+script:
+#-------------------------------------------
+# SWITCHING POWER BATTERY VS SUPPLY
+#-------------------------------------------
+  - id: battery_power_run
+    mode: single
+    then:
+      # Power solar > Power Out
+      - if:
+
+          condition:
+            for:
+              time: 2s
+              condition:
+                lambda: "return (id(reverse_current).state) > id(current_out).state;"
+          then:
+            - switch.turn_on: battery_power
+
+#-------------------------------------------
+# PWM FAN VS TEMPERATURE
+#-------------------------------------------
+# Sets the speed of the fan based on a linear calculation
+# between the high and low temperature thresholds and
+# the minimum specified fan speed
+# Thanks: https://www.speaktothegeek.co.uk/2023/01/esphome-fan-v3-variable-speed-pwm-and-temperature-control/
+  - id: set_fan_state
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(temp_ups).state < id(${temperature_threshold_low});
+          then:
+            - fan.turn_off: fan_ups
+          else:
+            - fan.turn_on:
+                id: fan_ups
+                speed: !lambda |-
+                  if (id(temp_ups).state >= id(${temperature_threshold_high})) {
+                    // Over upper threshold, fan speed at maximum
+                    ESP_LOGD("Fan speed calc", "Temperature is above or equal to upper threshold so setting to max");
+                    return 100;
+                  }
+                  else {
+                    float calc_speed = ((100-id(${minimum_fan_speed})) / (id(${temperature_threshold_high})-id(${temperature_threshold_low})))*(id(temp_ups).state-id(${temperature_threshold_low}))+id(${minimum_fan_speed});
+                    ESP_LOGD("Fan speed calc", "calculated speed = %f", calc_speed);
+                    return calc_speed;
+                  }
+#-------------------------------------------
+# STATUS LEDS
+#-------------------------------------------
+status_led:
+  pin:
+    # red LED
+    number: $status_led_pin
+    inverted: true
+
+#-------------------------------------------
+# SENSORS
+#-------------------------------------------
+sensor:
+#-------------------------------------------
+# DALLAS temperature sensor - DS18B20 
+# connected 4.7k to VCC 
+#-------------------------------------------
+# Temperature ups
+  - platform: dallas
+    address: 0x9cab667f0e64ff28
+    internal: true
+    id: temp_ups
+    on_value:
+      then:
+        - script.execute: set_fan_state
+        - component.update: temp_ups_temp
+    
+# Temperature Battery
+  - platform: dallas
+    address: 0xf43c7af6484bc028
+    name: "${friendly_name} Temperature BAT"
+    id: temp_battery
+    internal: true
+    on_value:
+      then:
+        - component.update: temp_battery_temp
+
+# Fixed Template no showing ups temp in HA
+  - platform: template
+    name: "${friendly_name} Temperature BAT"
+    id: temp_battery_temp
+    lambda: return id(temp_battery).state;
+    entity_category: diagnostic
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    update_interval: never
+
+  - platform: template
+    name: "${friendly_name} Temperature UPS"
+    id: temp_ups_temp
+    lambda: return id(temp_ups).state;
+    entity_category: diagnostic
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer
+    update_interval: never
+
+#-------------------------------------------
+# ADC VOLTAGE
+# Voltage mcu detector
+# when power failure supercap can hold for max 10s send alert to HA
+#-------------------------------------------
+  - platform: adc 
+    pin: vcc
+    name: Voltage MCU
+    id: mcu_voltage
+    update_interval: 5s
+    entity_category: config
+    on_value:
+      if:
+        condition:
+          sensor.in_range:
+            id: mcu_voltage
+            below: 3.0
+        then:
+          binary_sensor.template.publish:
+            id: power_supply_alert
+            state: True
+        else:
+          binary_sensor.template.publish:
+            id: power_supply_alert
+            state: False
+
+#-------------------------------------------
+# PULSE COUNTERS - FAN SPEED
+# 200 ~ 3000rpm
+#-------------------------------------------
+  - platform: pulse_counter
+    pin: $fan_tach_pin
+    name: ${friendly_name} Fan Speed
+    unit_of_measurement: 'RPM'
+    filters:
+      - multiply: 0.5
+      - lambda: 'return min((float)3000.0, x);' # No value greater than 3000
+    count_mode:
+      rising_edge: INCREMENT
+      falling_edge: DISABLE
+    update_interval: 5s
+    icon: mdi:fan
+
+#-------------------------------------------
+# Wifi signal component
+#-------------------------------------------
+  - platform: wifi_signal
+    name: "${friendly_name} Signal"
+    update_interval: 320s
+    id: signal_strange
+
+#-------------------------------------------
+# Electricity component - INA219
+#-------------------------------------------
+  - platform: ina219
+    address: 0x41
+    shunt_resistance: 0.0099 ohm
+    current:
+      name: "${friendly_name} Current Grid"
+      id: current_grid
+    power:
+      name: "${friendly_name} Power Grid"
+    bus_voltage:
+      name: "${friendly_name} Voltage Grid"
+      id: voltage_grid
+    shunt_voltage:
+      name: "${friendly_name} Shunt Voltage"
+      internal: True
+    #max_voltage: 32.0V
+    #max_current: 10A
+    update_interval: 5s
+
+#-------------------------------------------
+# Electricity component - INA3221 3CH DC current sensor
+#-------------------------------------------
+  - platform: ina3221
+    address: 0x40
+    # SOLAR INPUT
+    channel_1:
+      shunt_resistance:  0.01 ohm
+      current:
+        name: "${friendly_name} Current Solar"
+        accuracy_decimals: 3
+        id: current_solar
+        on_value:
+          - script.execute: battery_power_run
+      power:
+        name: "${friendly_name} Power Solar"
+        accuracy_decimals: 3
+        id: power_solar
+      bus_voltage:
+        name: "${friendly_name} Voltage Solar"
+        id: voltage_solar
+      shunt_voltage:
+        name: "${friendly_name} Shunt Voltage Solar"
+        internal: true
+    # BATTERY INPUT/OUTPUT
+    channel_2:
+      shunt_resistance: 0.012 ohm
+      current:
+        name: "${friendly_name} Current Battery"
+        id: current_bat
+        accuracy_decimals: 3
+        on_value:
+          # backlight lcd
+          - if:
+              condition:
+                sensor.in_range:
+                  id: current_bat
+                  above: 0
+              then:
+                - switch.turn_off: backlight
+              else:
+                - switch.turn_on: backlight
+      power:
+        name: "${friendly_name} Power Battery"
+        id: power_bat
+        on_value:
+          # blue led
+          - if:
+              condition:
+                and:
+                  - sensor.in_range:
+                      id: temp_battery
+                      below: 28
+                  - sensor.in_range:
+                      id: temp_ups
+                      below: 30
+              then:
+                # ON LED
+                - if: 
+                    condition:
+                        -  sensor.in_range:
+                             id: voltage_bat
+                             above: 14.4
+                    then:
+                      - light.turn_on: info_led
+                    else:
+                # SLOW BLINKING LED
+                      - if:
+                          condition:
+                            - sensor.in_range:
+                                id: current_bat
+                                below: -0.01
+                          then:
+                            - binary_sensor.template.publish:
+                                id: charging_state
+                                state: True
+                          else:
+                            - binary_sensor.template.publish:
+                                id: charging_state
+                                state: False
+                - binary_sensor.template.publish:
+                    id: error_state
+                    state: False
+
+              else:
+                # FAST BLINKING LED
+                - if:
+                    condition:
+                      or:
+                        - sensor.in_range:
+                            id: temp_battery
+                            above: 28
+                        - sensor.in_range:
+                           id: temp_ups
+                           above: 30
+                        - sensor.in_range:
+                           id: voltage_bat
+                           below: 10.0
+                    then:
+                      - binary_sensor.template.publish:
+                          id: error_state
+                          state: True
+                    else:
+                      - binary_sensor.template.publish:
+                          id: error_state
+                          state: False
+
+                # OFF LED
+                - light.turn_off: info_led
+          # SOLAR CHARGING SWITCH
+          # TEXT FULL BATTERY
+          - if:
+              condition:
+                sensor.in_range:
+                  id: voltage_bat
+                  above: 14.4
+              then:
+                - text_sensor.template.publish:
+                    id: textbatt
+                    state: "Full Battery"
+                - if:
+                    condition:
+                      for:
+                        time: 5s
+                        condition:
+                         #  and:
+                            - sensor.in_range:
+                                id: current_bat
+                                above: -260.0
+                           #  - sensor.in_range:
+                            #     id: current_bat
+                            #     above: 14.4
+                    then:
+                      - switch.turn_on: solar_charging_switch #opravit
+                    else:
+                      - switch.turn_off: solar_charging_switch
+          # TEXT BATTERY
+          - if:
+              condition:
+                - sensor.in_range:
+                    id: current_bat
+                    above: 0.0
+              then:
+                - if:
+                    condition:
+                      sensor.in_range:
+                        id: voltage_bat
+                        below: 14.4
+                        above: 11.2
+                    then:
+                      - text_sensor.template.publish:
+                          id: textbatt
+                          state: "Normal Battery"
+                - if:
+                    condition:
+                      sensor.in_range:
+                        id: voltage_bat
+                        below: 11.2
+                        above: 10.4
+                    then:
+                      - text_sensor.template.publish:
+                          id: textbatt
+                          state: "Low Battery"
+                - if:
+                    condition:
+                      sensor.in_range:
+                        id: voltage_bat
+                        below: 10.4
+                        above: 5.0
+                    then:
+                      - text_sensor.template.publish:
+                          id: textbatt
+                          state: "Very Low Battery!"
+                - if:
+                    condition:
+                      sensor.in_range:
+                        id: voltage_bat
+                        below: 5.0
+                    then:
+                      - text_sensor.template.publish:
+                          id: textbatt
+                          state: "NO Battery!"
+          - if:
+              condition:
+                for:
+                  time: 30s
+                  condition:
+                    sensor.in_range:
+                      id: voltage_bat
+                      below: 10.9
+              then:
+                - switch.turn_off: battery_power
+      bus_voltage:
+        name: "${friendly_name} Voltage Battery"
+        id: voltage_bat
+        on_value:
+          then:
+            component.update: battery_per
+      shunt_voltage:
+        name: "${friendly_name} Shunt Voltage Battery"
+        internal: true
+
+    # OUT OUTPUT
+    channel_3:
+      shunt_resistance: 0.01 ohm
+      current:
+        name: "${friendly_name} Current Out"
+        accuracy_decimals: 3
+        id: current_out
+      power:
+        name: "${friendly_name} Power Out"
+        accuracy_decimals: 3
+        id: power_out
+      bus_voltage:
+        name: "${friendly_name} Voltage Out"
+        id: voltage_out
+      shunt_voltage:
+        name: "${friendly_name} Shunt Voltage Out"
+        internal: true
+    update_interval: 5s
+
+#-------------------------------------------
+# Total energy
+#-------------------------------------------
+  - platform: total_daily_energy
+    name: "${friendly_name} Solar Energy"
+    power_id: power_solar
+    icon: "mdi:solar-power"
+    accuracy_decimals: 2
+
+#-------------------------------------------
+# Battery - template sensor units %
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Battery"
+    unit_of_measurement: '%'
+    update_interval: never
+    icon: mdi:battery
+    filters:
+      - calibrate_linear:
+          - 11.0 -> 0
+          - 13.56 -> 100
+#      - lambda: 'return min((float)100.0, x);' # when is absorubtion mode voltage 14.8V
+      - lambda: 'return max((float)0.0, x);'
+    lambda: return (id(voltage_bat).state);
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    device_class: battery
+    id: battery_per
+
+#-------------------------------------------
+#reverse negative value
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Reverse"
+    id: reverse_current
+    unit_of_measurement: 'V'
+    update_interval: 10s
+    lambda: |-
+      return (id(current_solar).state * (-1.0));
+    filters:
+      - multiply: -1
+    internal: true
+    
+#-------------------------------------------
+# INTERVALS
+#-------------------------------------------
+interval:
+  # error interval blinking led
+  - interval: 500ms
+    then:
+      if:
+        condition:
+          binary_sensor.is_on: error_state
+        then:
+          - light.turn_on: info_led
+          - delay: 250ms
+          - light.turn_off: info_led
+  # charging interval blinking led
+  - interval: 1500ms
+    then:
+      if:
+        condition:
+          binary_sensor.is_on: charging_state
+        then:
+          - light.turn_on: info_led
+          - delay: 750ms
+          - light.turn_off: info_led
+    
+#-------------------------------------------
+# BINARY SENSORS
+#-------------------------------------------
+binary_sensor:
+#-------------------------------------------
+# API CONNECTED STATE
+#-------------------------------------------
+  - platform: status
+    id: online_status
+    name: "${friendly_name} Status"
+    entity_category: diagnostic
+    icon: "mdi:power-standby"
+
+#-------------------------------------------
+# ERROR STATE
+#-------------------------------------------
+  - platform: template
+    id: error_state
+    #internal: True
+    name: error state
+#-------------------------------------------
+# CHARGING STATE
+#-------------------------------------------
+  - platform: template
+    id: charging_state
+    internal: True
+
+#-------------------------------------------
+# Alert low voltage on MCU
+#-------------------------------------------
+  - platform: template
+    name: Power Supply Alert
+    id: power_supply_alert
+    icon: mdi:flash-alert
+    entity_category: diagnostic
+
+#-------------------------------------------
+# TEXT SENSORS
+#-------------------------------------------
+text_sensor:
+#-------------------------------------------
+# Battery status LOW / NORMAL / FULL / CHARGING
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Battery Status"
+    id: textbatt
+    lambda: |-
+      return {"Loading"};
+    update_interval: never
+    icon: mdi:home-battery
+  
+#-------------------------------------------
+# LIGHTS
+#-------------------------------------------
+light:
+#-------------------------------------------
+# LED - BLUE CHARGING / ERROR TEMP / WARNING LOW BATTERY 
+#-------------------------------------------
+  - platform: binary
+    name: "${friendly_name} Full Battery Switch"
+    output: blue_led
+    id: info_led
+    internal: true
+
+#-------------------------------------------
+# OUTPUTS
+#-------------------------------------------
+output:
+#-------------------------------------------
+# LED - BLUE CHARGING / ERROR TEMP / WARNING LOW BATTERY 
+#-------------------------------------------
+  - id: blue_led
+    platform: gpio
+    pin: $charging_led_pin
+
+#-------------------------------------------
+# FAN POWER PIN AND PWM
+#-------------------------------------------
+  - platform: gpio
+    pin: $fan_power_pin
+    id: fan_supply
+  - platform: esp8266_pwm
+    pin: $fan_pwm_pin
+    frequency: 25000 Hz
+    id: pwmfan
+
+#-------------------------------------------
+# FANS
+#-------------------------------------------
+fan:
+#-------------------------------------------
+# SPEED WHIT PWM 12V FAN
+#-------------------------------------------
+  - platform: speed
+    output: pwmfan
+    name: ${friendly_name} Fan
+    id: fan_ups
+    on_turn_on:
+      - output.turn_on: fan_supply
+      - logger.log: "Power off Fan turned ON"
+    on_turn_off:
+      - output.turn_off: fan_supply
+      - logger.log: "Power off Fan turned OFF"
+      - delay: 1s
+      - logger.log: "Write 100% to output pwmfan"
+      - output.set_level:
+          id: pwmfan
+          level: 100%
+    icon: mdi:fan
+
+#-------------------------------------------
+# SWITCHES
+#-------------------------------------------
+switch:
+#-------------------------------------------
+# LCD BACKLIGHT
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Display BackLight"
+    id: backlight
+    turn_on_action:
+      then:
+        - lambda: |-
+            id(pcfdisplay).backlight();
+    turn_off_action:
+      then:
+        - lambda: |-
+            id(pcfdisplay).no_backlight();
+    icon: mdi:monitor-shimmer
+
+#-------------------------------------------
+# RELAY SUPPLY / BATTERY
+#-------------------------------------------
+  - platform: gpio
+    restore_mode: ALWAYS_OFF
+    id: battery_power
+    pin:
+      number: $relay_pin
+      inverted: False
+    name: "${friendly_name} On Battery"
+    on_turn_off:
+      then:
+        - switch.turn_on: backlight
+    on_turn_on:
+      if:
+        condition:
+          sensor.in_range:
+            id: current_bat
+            above: 0.0
+        then:
+          - switch.turn_off: backlight
+        else:
+          - switch.turn_on: backlight
+#-------------------------------------------
+# OPTO SWITCH BULK / ABSORUBTION BATTERY (14.8V - 13.6V)
+#-------------------------------------------
+  - platform: gpio
+    restore_mode: ALWAYS_OFF
+    pin:
+      number: $solar_charger_pin
+    name: "${friendly_name} Float Mode"
+    id: solar_charging_switch
+
+#-------------------------------------------
+# TIME COMPONENT
+#-------------------------------------------
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+#-------------------------------------------
+# DISPLAY
+# LCD CRYSTAL CHARACTER 20x4
+#-------------------------------------------
+display:
+  - platform: lcd_pcf8574
+    id: pcfdisplay
+    dimensions: 20x4
+    address: 0x27
+    user_characters:
+# BATTERY
+      - position: 0 # \x08
+        data: #ARROW UP
+          - 0b00100
+          - 0b01010
+          - 0b10001
+          - 0b00000
+          - 0b01010
+          - 0b11111
+          - 0b10001
+          - 0b11111
+      - position: 1 # \x09
+        data: #ARROW UP 2
+          - 0b00000
+          - 0b00100
+          - 0b01010
+          - 0b10001
+          - 0b01010
+          - 0b11111
+          - 0b10001
+          - 0b11111
+      - position: 2 # \x02
+        data: #ARROW right 1
+          - 0b00100
+          - 0b00010
+          - 0b00001
+          - 0b00010
+          - 0b00100
+          - 0b00111
+          - 0b11110
+          - 0b00111
+      - position: 3 # \x03
+        data: #ARROW right 2
+          - 0b10000
+          - 0b01000
+          - 0b00100
+          - 0b01000
+          - 0b10000
+          - 0b00111
+          - 0b11110
+          - 0b00111
+
+# SIGNAL
+      - position: 4 # \x04
+        data: #signal <25%
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b10000
+          - 0b10000
+
+      - position: 5 # \x05
+        data: #signal <50%
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b00000
+          - 0b00100
+          - 0b00100
+          - 0b10100
+          - 0b10100
+
+      - position: 6 # \x06
+        data: #signal <75%
+          - 0b00000
+          - 0b00000
+          - 0b00001
+          - 0b00001
+          - 0b00101
+          - 0b00101
+          - 0b10101
+          - 0b10101
+
+      - position: 7 # \x07
+        data: #signal none
+          - 0b10100
+          - 0b01000
+          - 0b10101
+          - 0b00001
+          - 0b00101
+          - 0b00101
+          - 0b10101
+          - 0b10101
+
+    lambda: |-
+      //--------------------------------------------------------------------------
+      // TITLE
+      //--------------------------------------------------------------------------
+      //--------------------------------------------------------------------------
+      // ALERT STATE  
+      //--------------------------------------------------------------------------
+      // API CONNECTED
+      if (id(online_status).state)  {
+        it.print(0, 0, "UPS V|A|S");
+        if (id(temp_battery).state < 28.0)  {
+          // BATTERY LOW
+          if (id(voltage_bat).state > 10.4 && id(voltage_bat).state < 10.9) {
+            static int i = 0;
+            i++;
+            if ((i % 2) == 0) {
+              it.printf(0, 0, "!WARNING!");
+            }
+            else {
+              it.printf(0, 0, "LOW BATTERY");
+            }
+          }
+          // BATTERY VERY LOW - ERROR
+          else if (id(voltage_bat).state <= 10.4 && id(voltage_bat).state > 5.0) {
+            static int d = 0;
+            d++;
+            if ((d % 2) == 0) {
+              it.printf(0, 0, "!!ERROR!!");
+            }
+            else {
+              it.printf(0, 0, "VERYLOW BAT");
+            }
+          }
+          // BATTERY NO - WARNING
+          else if (id(voltage_bat).state <= 5.0) {
+            static int e = 0;
+            e++;
+            if ((e % 2) == 0) {
+              it.printf(0, 0, "!WARNING!");
+            }
+            else {
+              it.printf(0, 0, "OFFLINE BAT");
+            }
+          }
+          // OUT VOLTAGE - WARNING
+          else if (id(voltage_out).state <= 12.0) {
+            static int e = 0;
+            e++;
+            if ((e % 2) == 0) {
+              it.printf(0, 0, "!WARNING!");
+            }
+            else {
+              it.printf(0, 0, "LOW VOLTAGE");
+            }
+          }
+          // GRID VOLTAGE - WARNING
+          else if (id(voltage_grid).state <= 12.0) {
+            static int e = 0;
+            e++;
+            if ((e % 2) == 0) {
+              it.printf(0, 0, "!WARNING!");
+            }
+            else {
+              it.printf(0, 0, "GRID VOLTAGE");
+            }
+          }
+        }
+        // BATTERY TEMP
+        else if (id(temp_battery).state >= 28.0) {
+          static int y = 0;
+          y++;
+          if ((y % 2) == 0) {
+            it.printf(0, 0, "!WARNING!");
+          }
+          else {
+            it.printf(0, 0, "TEMP - BAT");
+          }
+        }
+        // UPS TEMP
+        else if (id(temp_ups).state >= 30.0)  {
+          static int i = 0;
+          i++;
+          if ((i % 2) == 0) {
+            it.printf(0, 0, "!WARNING!");
+          }
+          else {
+            it.printf(0, 0, "TEMP - UPS");
+          }
+        }
+      } 
+      else {
+        static int i = 0;
+        i++;
+        if ((i % 2) == 0) {
+          it.printf(0, 0, "!WARNING!");
+        }
+        else {
+          it.printf(0, 0, "OFFLINE API");
+        }
+      }
+
+      //--------------------------------------------------------------------------
+      // TITLE - MEASUREMENT
+      //--------------------------------------------------------------------------
+      //it.print(4, 0, "V");
+      //it.print(9, 0, "A");
+      //it.print(14, 0, "W");
+        
+      //--------------------------------------------------------------------------
+      // TEMPERATURE
+      //--------------------------------------------------------------------------
+      // TEMP UPS
+      it.printf(11, 0, "%.0f|%.0fC", id(temp_ups).state, id(temp_battery).state);    
+      it.print(19, 0, "\xb0"); //not displyed
+      //--------------------------------------------------------------------------
+      // WIFI SIGNAL
+      //--------------------------------------------------------------------------
+      int signal_wifi = int(id(signal_strange).state);  //convert state to int
+      
+      if (signal_wifi < 0 && signal_wifi >= -60) {
+        it.printf(19, 0, "\x06");
+      }
+      else if (signal_wifi < -50 && signal_wifi >= -75) {
+        it.printf(19, 0, "\x05");
+      }
+      else if (signal_wifi < -70 && signal_wifi >= -90) {
+        it.printf(19, 0, "\x04");
+      }
+      else {
+        it.printf(19, 0, "\x07");
+      }
+       
+      //--------------------------------------------------------------------------
+      // SOLAR
+      //--------------------------------------------------------------------------
+      //SOLAR | VOLATAGE | CURRENT
+      it.print(0, 1, "SOL");
+      it.print(3, 1, "|");
+      it.printf(4, 1, "%.1f", id(voltage_solar).state);
+      it.print(8, 1, "|");
+      it.printf(9, 1, "%.2f", id(current_solar).state);
+      it.print(14, 1, "|");
+      //it.printf(15, 1, "%.2f", id(power_solar).state);
+      
+      //--------------------------------------------------------------------------
+      // BATTERY
+      //--------------------------------------------------------------------------
+      //BATTERY | VOLATAGE | CURRENT
+      it.print(0, 2, "BAT");
+      it.print(3, 2, "|");
+      it.printf(4, 2, "%.1f", id(voltage_bat).state);
+      it.print(8, 2, "|");
+      it.printf(9, 2, "%.2f", id(current_bat).state);
+      it.print(14, 2, "|");
+      //it.printf(15, 2, "%.2f", id(power_bat).state);
+        
+      //--------------------------------------------------------------------------
+      // OUT  
+      //--------------------------------------------------------------------------
+      //OUT | VOLATAGE | CURRENT
+      it.print(0, 3, "OUT");
+      it.print(3, 3, "|");
+      it.printf(4, 3, "%.1f", id(voltage_out).state);
+      it.print(8, 3, "|");
+      it.printf(9, 3, "%.2f", id(current_out).state);
+      it.print(14, 3, "|");
+      //it.printf(15, 3, "%.2f", id(power_out).state);
+
+      //--------------------------------------------------------------------------
+      // GRID  
+      //--------------------------------------------------------------------------
+      //OUT | VOLATAGE | CURRENT
+      it.print(15, 1, "SUP");
+      it.printf(15, 2, "%.1f", id(voltage_grid).state);
+      it.printf(15, 3, "%.2f", id(current_grid).state);
+      
+      //--------------------------------------------------------------------------
+      // POWER STATE  
+      //--------------------------------------------------------------------------
+      //BATTERY
+      if (id(battery_power).state) {
+        static int i = 0;
+        i++;
+        if ((i % 2) == 0)
+          it.printf(17, 0, "\x08");
+        else
+          it.printf(17, 0, "\x09");
+      }
+      // SUPPLY
+      else {
+        static int i = 0;
+        i++;
+        if ((i % 2) == 0)
+          it.printf(17, 0, "\x02");
+        else
+          it.printf(17, 0, "\x03");
+      }
